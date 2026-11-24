@@ -1,0 +1,47 @@
+# Three nodes and one PostgreSQL server (a separate database per node).
+#   docker compose up --build
+#   curl -X POST localhost:8081/api/mine          # mine on node 1, then watch nodes 2 and 3 follow
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: chain
+      POSTGRES_PASSWORD: chain
+    volumes:
+      - ./deploy/init-databases.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chain"]
+      interval: 2s
+      retries: 20
+
+  node1: &node
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment: &env
+      NODE_ID: node-1
+      DIFFICULTY_BITS: "18"
+      DATABASE_URL: jdbc:postgresql://postgres:5432/node1
+      DATABASE_USER: chain
+      DATABASE_PASSWORD: chain
+      PEERS: http://node2:8080,http://node3:8080
+    ports: ["8081:8080"]
+
+  node2:
+    <<: *node
+    environment:
+      <<: *env
+      NODE_ID: node-2
+      DATABASE_URL: jdbc:postgresql://postgres:5432/node2
+      PEERS: http://node1:8080,http://node3:8080
+    ports: ["8082:8080"]
+
+  node3:
+    <<: *node
+    environment:
+      <<: *env
+      NODE_ID: node-3
+      DATABASE_URL: jdbc:postgresql://postgres:5432/node3
+      PEERS: http://node1:8080,http://node2:8080
+    ports: ["8083:8080"]
